@@ -28,7 +28,8 @@ social-lead-finder/
     ├── script.js          # Global scripts and navigation logic
     └── dashboard.js       # Dynamic data fetching, UI controllers, and view rendering
 ```
-Core Features
+## Core Features
+
 Live Monitoring Dashboard: Real-time metrics overview tracking incoming buying signals and active keyword searches.
 
 Keyword Management: Add, track, and audit active search terms targeting specific software or product alternatives.
