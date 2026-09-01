@@ -38,7 +38,8 @@ Lead Archive & Simulation: Instantly capture incoming signals or use the built-i
 
 Persistent Client Settings: Configure and store custom API endpoints and polling frequencies locally using browser localStorage.
 
-Getting Started Locally
+## Getting Started Locally
+
 1. Clone the repository:
 
 ```text
