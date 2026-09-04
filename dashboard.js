@@ -1,6 +1,6 @@
 // Dynamic API URL lookup supporting the Settings page configuration
 function getApiUrl() {
-    return localStorage.getItem("sld_api_url") || "http://127.0.0.1:8000";
+    return localStorage.getItem("sld_api_url") || "social-lead-finder-production.up.railway.app";
 }
 
 const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
