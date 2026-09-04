@@ -1,20 +1,50 @@
 // Dynamic API URL lookup supporting the Settings page configuration
 function getApiUrl() {
-    return localStorage.getItem("sld_api_url") || "social-lead-finder-production.up.railway.app";
+    return localStorage.getItem("sld_api_url") || "https://social-lead-finder-production.up.railway.app";
 }
 
-const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-const wsUrl = `${protocol}//${window.location.host}/ws/leads`;
-const socket = new WebSocket(wsUrl);
+// Derive WebSocket URL from the active backend API host instead of the frontend host
+function getWsUrl() {
+    const apiUrl = getApiUrl();
+    const wsProtocol = apiUrl.startsWith("https") ? "wss:" : "ws:";
+    const cleanHost = apiUrl.replace(/^https?:\/\//, "");
+    return `${wsProtocol}//${cleanHost}/ws/leads`;
+}
+
+let socket;
+
+function initWebSocket() {
+    socket = new WebSocket(getWsUrl());
+
+    socket.onopen = () => {
+        console.log("Real-time lead feed connected.");
+    };
+
+    socket.onmessage = (event) => {
+        const lead = JSON.parse(event.data);
+        appendLeadToDashboardTable(lead);
+    };
+
+    socket.onclose = () => {
+        console.warn("Lead feed disconnected. Reconnecting in 5s...");
+        setTimeout(initWebSocket, 5000);
+    };
+}
 
 document.addEventListener("DOMContentLoaded", () => {
     loadSettings();
     fetchKeywords();
     fetchLeads();
+    initWebSocket();
 
-    document.getElementById("addKeywordBtn").addEventListener("click", addKeyword);
-    document.getElementById("addLeadBtn").addEventListener("click", simulateLead);
-    document.getElementById("saveSettingsBtn").addEventListener("click", saveSettings);
+    const addKeywordBtn = document.getElementById("addKeywordBtn");
+    if (addKeywordBtn) addKeywordBtn.addEventListener("click", addKeyword);
+
+    const addLeadBtn = document.getElementById("addLeadBtn");
+    if (addLeadBtn) addLeadBtn.addEventListener("click", simulateLead);
+
+    const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+    if (saveSettingsBtn) saveSettingsBtn.addEventListener("click", saveSettings);
 });
 
 async function fetchKeywords() {
@@ -49,7 +79,8 @@ async function deleteKeyword(id) {
         const response = await fetch(`${getApiUrl()}/keywords/${id}`, { method: "DELETE" });
         if (response.ok) {
             fetchKeywords();
-            if (document.getElementById("view-keywords").style.display === "block") {
+            const viewKeywords = document.getElementById("view-keywords");
+            if (viewKeywords && viewKeywords.style.display === "block") {
                 loadFullKeywordsTable();
             }
         }
@@ -99,7 +130,8 @@ async function deleteLead(id) {
         const response = await fetch(`${getApiUrl()}/leads/${id}`, { method: "DELETE" });
         if (response.ok) {
             fetchLeads();
-            if (document.getElementById("view-leads").style.display === "block") {
+            const viewLeads = document.getElementById("view-leads");
+            if (viewLeads && viewLeads.style.display === "block") {
                 loadFullLeadsTable();
             }
         }
@@ -110,6 +142,7 @@ async function deleteLead(id) {
 
 async function addKeyword() {
     const input = document.getElementById("keywordInput");
+    if (!input) return;
     const term = input.value.trim();
     if (!term) return;
 
@@ -130,9 +163,15 @@ async function addKeyword() {
 }
 
 async function simulateLead() {
-    const keyword_id = parseInt(document.getElementById("leadKeywordId").value);
-    const content = document.getElementById("leadContent").value.trim();
-    const source_url = document.getElementById("leadUrl").value.trim();
+    const kwInput = document.getElementById("leadKeywordId");
+    const contentInput = document.getElementById("leadContent");
+    const urlInput = document.getElementById("leadUrl");
+
+    if (!kwInput || !contentInput || !urlInput) return;
+
+    const keyword_id = parseInt(kwInput.value);
+    const content = contentInput.value.trim();
+    const source_url = urlInput.value.trim();
 
     if (!keyword_id || !content || !source_url) return;
 
@@ -144,9 +183,9 @@ async function simulateLead() {
         });
 
         if (response.ok) {
-            document.getElementById("leadKeywordId").value = "";
-            document.getElementById("leadContent").value = "";
-            document.getElementById("leadUrl").value = "";
+            kwInput.value = "";
+            contentInput.value = "";
+            urlInput.value = "";
             fetchLeads();
         }
     } catch (err) {
@@ -156,34 +195,36 @@ async function simulateLead() {
 
 function switchView(viewName) {
     document.querySelectorAll(".nav-links li").forEach(li => li.classList.remove("active"));
-    document.getElementById(`nav-${viewName}`).classList.add("active");
+    const navEl = document.getElementById(`nav-${viewName}`);
+    if (navEl) navEl.classList.add("active");
 
     document.querySelectorAll(".view-section").forEach(sec => sec.style.display = "none");
 
     const targetView = document.getElementById(`view-${viewName}`);
     const titleEl = document.getElementById("pageTitle");
 
+    if (targetView) targetView.style.display = viewName === 'dashboard' ? "grid" : "block";
+
+    if (titleEl) {
+        if (viewName === 'dashboard') titleEl.textContent = "Live Monitoring Dashboard";
+        else if (viewName === 'keywords') titleEl.textContent = "Tracked Keywords Management";
+        else if (viewName === 'leads') titleEl.textContent = "Captured Leads Archive";
+        else if (viewName === 'settings') titleEl.textContent = "System Settings";
+    }
+
     if (viewName === 'dashboard') {
-        targetView.style.display = "grid";
-        titleEl.textContent = "Live Monitoring Dashboard";
         fetchKeywords();
         fetchLeads();
     } else if (viewName === 'keywords') {
-        targetView.style.display = "block";
-        titleEl.textContent = "Tracked Keywords Management";
         loadFullKeywordsTable();
     } else if (viewName === 'leads') {
-        targetView.style.display = "block";
-        titleEl.textContent = "Captured Leads Archive";
         loadFullLeadsTable();
-    } else if (viewName === 'settings') {
-        targetView.style.display = "block";
-        titleEl.textContent = "System Settings";
     }
 }
 
 async function loadFullKeywordsTable() {
     const container = document.getElementById("fullKeywordTableContainer");
+    if (!container) return;
     try {
         const res = await fetch(`${getApiUrl()}/keywords/`);
         const keywords = await res.json();
@@ -215,6 +256,7 @@ async function loadFullKeywordsTable() {
 
 async function loadFullLeadsTable() {
     const container = document.getElementById("fullLeadTableContainer");
+    if (!container) return;
     try {
         const res = await fetch(`${getApiUrl()}/leads/`);
         const leads = await res.json();
@@ -249,47 +291,39 @@ async function loadFullLeadsTable() {
 }
 
 function saveSettings() {
-    const apiUrl = document.getElementById("settingApiUrl").value.trim();
-    const pollInterval = document.getElementById("settingPollInterval").value.trim();
+    const apiInput = document.getElementById("settingApiUrl");
+    const pollInput = document.getElementById("settingPollInterval");
+    if (!apiInput || !pollInput) return;
 
-    localStorage.setItem("sld_api_url", apiUrl);
-    localStorage.setItem("sld_poll_interval", pollInterval);
+    localStorage.setItem("sld_api_url", apiInput.value.trim());
+    localStorage.setItem("sld_poll_interval", pollInput.value.trim());
 
     const statusMsg = document.getElementById("settingsStatus");
-    statusMsg.style.opacity = "1";
-
-    setTimeout(() => {
-        statusMsg.style.opacity = "0";
-    }, 3000);
+    if (statusMsg) {
+        statusMsg.style.opacity = "1";
+        setTimeout(() => {
+            statusMsg.style.opacity = "0";
+        }, 3000);
+    }
 }
 
 function loadSettings() {
     const savedApiUrl = localStorage.getItem("sld_api_url");
     const savedPollInterval = localStorage.getItem("sld_poll_interval");
 
-    if (savedApiUrl) document.getElementById("settingApiUrl").value = savedApiUrl;
-    if (savedPollInterval) document.getElementById("settingPollInterval").value = savedPollInterval;
+    const apiInput = document.getElementById("settingApiUrl");
+    const pollInput = document.getElementById("settingPollInterval");
+
+    if (savedApiUrl && apiInput) apiInput.value = savedApiUrl;
+    if (savedPollInterval && pollInput) pollInput.value = savedPollInterval;
 }
-
-socket.onopen = () => {
-    console.log("Real-time lead feed connected.");
-};
-
-socket.onmessage = (event) => {
-    const lead = JSON.parse(event.data);
-    appendLeadToDashboardTable(lead);
-};
-
-socket.onclose = () => {
-    console.warn("Lead feed disconnected. Reconnecting...");
-    setTimeout(() => location.reload(), 5000);
-};
 
 function appendLeadToDashboardTable(lead) {
     const container = document.getElementById("leadFeedContainer");
     if (!container) return;
 
-    if (container.querySelector("p") && container.querySelector("p").textContent.includes("No leads captured yet")) {
+    const p = container.querySelector("p");
+    if (p && p.textContent.includes("No leads captured yet")) {
         container.innerHTML = "";
     }
 
